@@ -44,6 +44,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -53,6 +56,7 @@ import com.example.data.model.FocusConstants
 import com.example.data.model.UserProfile
 import com.example.ui.FocusTimerUiState
 import com.example.ui.components.BotanicalGardenCanvas
+import com.example.ui.components.clearActiveTextInput
 import com.example.ui.theme.JetBrainsMonoFontFamily
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -75,6 +79,9 @@ fun FocusScreen(
     onPickDistractionReason: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val focusManager = LocalFocusManager.current
+    val textToolbar = LocalTextToolbar.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     var subjectsInput by remember(profile.subjectsText) { mutableStateOf(profile.subjectsText) }
     LaunchedEffect(profile.subjectsText) {
         if (subjectsInput != profile.subjectsText) {
@@ -353,7 +360,10 @@ fun FocusScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Button(
-                            onClick = onStartSession,
+                            onClick = {
+                                clearActiveTextInput(focusManager, textToolbar, keyboardController)
+                                onStartSession()
+                            },
                             enabled = timerState.isBreakMode || parsedSubjects.isNotEmpty(),
                             shape = MaterialTheme.shapes.medium,
                             modifier = Modifier
@@ -524,7 +534,10 @@ fun FocusScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedButton(
-                        onClick = { onSpinRoulette(subjectsInput, profile.syllabusTopics) },
+                        onClick = {
+                            clearActiveTextInput(focusManager, textToolbar, keyboardController)
+                            onSpinRoulette(subjectsInput, profile.syllabusTopics)
+                        },
                         shape = MaterialTheme.shapes.small,
                         modifier = Modifier
                             .weight(1f)
@@ -534,7 +547,10 @@ fun FocusScreen(
                         Text("Random chuno")
                     }
                     Button(
-                        onClick = { onSaveSubjectsText(subjectsInput) },
+                        onClick = {
+                            clearActiveTextInput(focusManager, textToolbar, keyboardController)
+                            onSaveSubjectsText(subjectsInput)
+                        },
                         shape = MaterialTheme.shapes.small,
                         modifier = Modifier
                             .minimumInteractiveComponentSize()

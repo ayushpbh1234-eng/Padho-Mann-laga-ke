@@ -2,6 +2,7 @@ package com.example.notifications
 
 import android.Manifest
 import android.app.AlarmManager
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -14,6 +15,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.example.MainActivity
 import com.example.R
+import com.example.supervision.ScreenShareService
 import java.util.Calendar
 
 interface FocusNotifier {
@@ -23,6 +25,8 @@ interface FocusNotifier {
     fun clearBackgroundDistraction()
     fun scheduleReverseAlarm(alarmTime: String, currentStudy: String)
     fun sendTestReminderNotification(currentStudy: String)
+    fun notifyParentLockOrBlockedApp(title: String, body: String)
+    fun notifyParentNudge(parentName: String, message: String)
 }
 
 class FocusNotificationHelper(context: Context) : FocusNotifier {
@@ -49,9 +53,91 @@ class FocusNotificationHelper(context: Context) : FocusNotifier {
                 description = "Daily study start time reminders"
             }
 
+            val supervisionChannel = NotificationChannel(
+                CHANNEL_PARENTAL_SUPERVISION,
+                "Parental Supervision",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Live parental phone supervision alerts, app limits, and parent messages"
+            }
+
+            val serviceChannel = NotificationChannel(
+                CHANNEL_SUPERVISION_SERVICE,
+                "Device Sync Status",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Ongoing status notification while device sync is active"
+            }
+
+            val screenShareChannel = NotificationChannel(
+                CHANNEL_SCREEN_SHARE,
+                "Live Screen Share",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "Visible ongoing indicator whenever live screen sharing with Parent is active"
+            }
+
             manager.createNotificationChannel(focusChannel)
             manager.createNotificationChannel(reminderChannel)
+            manager.createNotificationChannel(supervisionChannel)
+            manager.createNotificationChannel(serviceChannel)
+            manager.createNotificationChannel(screenShareChannel)
         }
+    }
+
+    fun buildSupervisionForegroundNotification(statusText: String): Notification {
+        ensureChannels()
+        val openAppIntent = Intent(appContext, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingOpen = PendingIntent.getActivity(
+            appContext,
+            NOTIF_ID_SUPERVISION_FOREGROUND,
+            openAppIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(appContext, CHANNEL_SUPERVISION_SERVICE)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle("Focus Garden • Family Connect Active 🌱")
+            .setContentText(statusText)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(pendingOpen)
+            .build()
+    }
+
+    fun buildScreenShareForegroundNotification(): Notification {
+        ensureChannels()
+        val openAppIntent = Intent(appContext, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingOpen = PendingIntent.getActivity(
+            appContext,
+            NOTIF_ID_SCREEN_SHARE_FOREGROUND,
+            openAppIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val stopIntent = Intent(appContext, ScreenShareService::class.java).apply {
+            action = ScreenShareService.ACTION_STOP
+        }
+        val pendingStop = PendingIntent.getService(
+            appContext,
+            NOTIF_ID_SCREEN_SHARE_FOREGROUND + 100,
+            stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        return NotificationCompat.Builder(appContext, CHANNEL_SCREEN_SHARE)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle("Focus Garden • Live Screen Share ON 📺")
+            .setContentText("Aapki screen linked Parent ke saath share ho rahi hai. Band karne ke liye Stop dabaein.")
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setContentIntent(pendingOpen)
+            .addAction(0, "Stop Share", pendingStop)
+            .build()
     }
 
     override fun notifySessionComplete(subject: String, durationMinutes: Int, isBreak: Boolean) {
@@ -93,6 +179,29 @@ class FocusNotificationHelper(context: Context) : FocusNotifier {
         }
     }
 
+    override fun notifyParentLockOrBlockedApp(title: String, body: String) {
+        ensureChannels()
+        if (!canPostNotifications()) return
+        postNotification(
+            id = NOTIF_ID_PARENT_LOCK,
+            channelId = CHANNEL_PARENTAL_SUPERVISION,
+            title = title,
+            body = body
+        )
+    }
+
+    override fun notifyParentNudge(parentName: String, message: String) {
+        ensureChannels()
+        if (!canPostNotifications()) return
+        val sender = parentName.ifBlank { "Parent" }
+        postNotification(
+            id = NOTIF_ID_PARENT_NUDGE,
+            channelId = CHANNEL_PARENTAL_SUPERVISION,
+            title = "📢 $sender ka message:",
+            body = message
+        )
+    }
+
     override fun scheduleReverseAlarm(alarmTime: String, currentStudy: String) {
         ensureChannels()
         val parts = alarmTime.split(":")
@@ -130,7 +239,6 @@ class FocusNotificationHelper(context: Context) : FocusNotifier {
                 pendingIntent
             )
         } catch (_: SecurityException) {
-            // Fallback silently if alarm scheduling is restricted by OEM policy
         }
     }
 
@@ -187,9 +295,16 @@ class FocusNotificationHelper(context: Context) : FocusNotifier {
     companion object {
         const val CHANNEL_FOCUS_SESSIONS = "focus_sessions"
         const val CHANNEL_STUDY_REMINDERS = "study_reminders"
+        const val CHANNEL_PARENTAL_SUPERVISION = "parental_supervision"
+        const val CHANNEL_SUPERVISION_SERVICE = "supervision_service"
+        const val CHANNEL_SCREEN_SHARE = "screen_share_service"
         private const val NOTIF_ID_SESSION_COMPLETE = 1001
         private const val NOTIF_ID_DISTRACTION_NUDGE = 1002
         const val NOTIF_ID_REVERSE_ALARM = 1003
+        private const val NOTIF_ID_PARENT_LOCK = 1004
+        private const val NOTIF_ID_PARENT_NUDGE = 1005
+        const val NOTIF_ID_SUPERVISION_FOREGROUND = 1006
+        const val NOTIF_ID_SCREEN_SHARE_FOREGROUND = 1007
         private const val ALARM_REQUEST_CODE = 2001
     }
 }

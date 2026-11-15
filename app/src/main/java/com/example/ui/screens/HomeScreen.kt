@@ -36,7 +36,6 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.School
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -75,6 +74,7 @@ import com.example.data.model.ReverseAlarmStatus
 import com.example.data.model.StudySession
 import com.example.data.model.UserProfile
 import com.example.ui.components.GardenStatsCard
+import com.example.ui.components.SafeAlertDialog
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -627,7 +627,7 @@ fun HomeScreen(
             initialMinute = initialMinute,
             is24Hour = true
         )
-        AlertDialog(
+        SafeAlertDialog(
             onDismissRequest = { showTimePicker = false },
             title = { Text("Padhai ka time chuno") },
             text = {
@@ -638,9 +638,10 @@ fun HomeScreen(
                     TimePicker(state = timePickerState)
                 }
             },
-            confirmButton = {
+            confirmButton = { clearDialogInput ->
                 Button(
                     onClick = {
+                        clearDialogInput()
                         val formatted = String.format(
                             Locale.US,
                             "%02d:%02d",
@@ -656,9 +657,12 @@ fun HomeScreen(
                     Text("Set")
                 }
             },
-            dismissButton = {
+            dismissButton = { clearDialogInput ->
                 TextButton(
-                    onClick = { showTimePicker = false },
+                    onClick = {
+                        clearDialogInput()
+                        showTimePicker = false
+                    },
                     modifier = Modifier.minimumInteractiveComponentSize()
                 ) {
                     Text("Cancel")

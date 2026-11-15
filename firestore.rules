@@ -10,6 +10,10 @@ service cloud.firestore {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function isValidPairingCodeId(code) {
+      return code is string && code.size() == 6 && code.matches('^[A-Z0-9]{6}$');
+    }
+
     function incoming() {
       return request.resource.data;
     }
@@ -22,6 +26,13 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isLinkedParent(childId) {
+      return isSignedIn() &&
+             isValidId(childId) &&
+             exists(/databases/$(database)/documents/familyLinks/$(request.auth.uid + '_' + childId)) &&
+             get(/databases/$(database)/documents/familyLinks/$(request.auth.uid + '_' + childId)).data.status == 'active';
+    }
+
     function isValidUserProfile(data) {
       return data.userId is string &&
              data.userId == request.auth.uid &&
@@ -30,6 +41,9 @@ service cloud.firestore {
              data.challengeIdx <= 1000000 &&
              data.subjectsText is string &&
              data.subjectsText.size() <= 500 &&
+             (!('role' in data) || (data.role is string && data.role in ['child', 'parent'])) &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+             (!('linkedParentUid' in data) || data.linkedParentUid == null || (data.linkedParentUid is string && data.linkedParentUid.size() <= 128)) &&
              (!('onboardingCompleted' in data) || data.onboardingCompleted is bool) &&
              (!('currentStudy' in data) || (data.currentStudy is string && data.currentStudy.size() <= 200)) &&
              (!('syllabusText' in data) || (data.syllabusText is string && data.syllabusText.size() <= 4000)) &&
@@ -47,6 +61,7 @@ service cloud.firestore {
     function isValidStudySession(data) {
       return data.userId is string &&
              data.userId == request.auth.uid &&
+             (!('authorizedParentUids' in data) || (data.authorizedParentUids is list && data.authorizedParentUids.size() <= 10 && (data.authorizedParentUids.size() == 0 || data.authorizedParentUids[0] is string))) &&
              data.day is string &&
              data.day.size() == 10 &&
              data.day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
@@ -73,8 +88,198 @@ service cloud.firestore {
              data.updatedAt <= request.time;
     }
 
+    function isValidPairingCode(data, codeId) {
+      return data.code is string &&
+             data.code == codeId &&
+             isValidPairingCodeId(data.code) &&
+             data.childUid is string &&
+             data.childUid.size() > 0 &&
+             data.childUid.size() <= 128 &&
+             data.childName is string &&
+             data.childName.size() <= 100 &&
+             data.active is bool &&
+             (!('usedByParentUid' in data) || data.usedByParentUid == null || (data.usedByParentUid is string && data.usedByParentUid.size() <= 128)) &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidFamilyLink(data, linkId) {
+      return data.parentUid is string &&
+             isValidId(data.parentUid) &&
+             data.childUid is string &&
+             isValidId(data.childUid) &&
+             data.parentUid != data.childUid &&
+             linkId == data.parentUid + '_' + data.childUid &&
+             data.parentName is string &&
+             data.parentName.size() <= 100 &&
+             data.childName is string &&
+             data.childName.size() <= 100 &&
+             data.pairingCode is string &&
+             isValidPairingCodeId(data.pairingCode) &&
+             data.status is string &&
+             data.status in ['active', 'revoked'] &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidDeviceState(data, ownerUid) {
+      return data.childUid is string &&
+             data.childUid == ownerUid &&
+             data.childName is string &&
+             data.childName.size() <= 100 &&
+             data.deviceModel is string &&
+             data.deviceModel.size() <= 100 &&
+             data.androidVersion is string &&
+             data.androidVersion.size() <= 40 &&
+             data.batteryPercent is int &&
+             data.batteryPercent >= -1 &&
+             data.batteryPercent <= 100 &&
+             data.isCharging is bool &&
+             data.usageAccessGranted is bool &&
+             data.notificationsGranted is bool &&
+             data.supervisionServiceRunning is bool &&
+             (!('currentForegroundApp' in data) || (data.currentForegroundApp is string && data.currentForegroundApp.size() <= 100)) &&
+             (!('currentForegroundPackage' in data) || (data.currentForegroundPackage is string && data.currentForegroundPackage.size() <= 200)) &&
+             data.totalPhoneScreenMinutesToday is int &&
+             data.totalPhoneScreenMinutesToday >= 0 &&
+             data.totalPhoneScreenMinutesToday <= 1440 &&
+             (!('isFocusSessionActive' in data) || data.isFocusSessionActive is bool) &&
+             (!('activeFocusSubject' in data) || (data.activeFocusSubject is string && data.activeFocusSubject.size() <= 100)) &&
+             (!('todayStudyMinutes' in data) || (data.todayStudyMinutes is int && data.todayStudyMinutes >= 0 && data.todayStudyMinutes <= 1440)) &&
+             (!('todayCompletedSessions' in data) || (data.todayCompletedSessions is int && data.todayCompletedSessions >= 0 && data.todayCompletedSessions <= 1000)) &&
+             (!('streakDays' in data) || (data.streakDays is int && data.streakDays >= 0 && data.streakDays <= 10000)) &&
+             (!('recentBlockedAttempt' in data) || (data.recentBlockedAttempt is string && data.recentBlockedAttempt.size() <= 200)) &&
+             data.installedApps is list &&
+             data.installedApps.size() <= 60 &&
+             (data.installedApps.size() == 0 || data.installedApps[0] is map) &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidParentControls(data, ownerUid) {
+      return data.childUid is string &&
+             data.childUid == ownerUid &&
+             data.parentUid is string &&
+             data.parentUid.size() <= 128 &&
+             data.isPhoneLocked is bool &&
+             (!('lockMessage' in data) || (data.lockMessage is string && data.lockMessage.size() <= 250)) &&
+             data.dailyScreenLimitMinutes is int &&
+             data.dailyScreenLimitMinutes >= 0 &&
+             data.dailyScreenLimitMinutes <= 1440 &&
+             data.bonusMinutesToday is int &&
+             data.bonusMinutesToday >= 0 &&
+             data.bonusMinutesToday <= 600 &&
+             (!('bonusDay' in data) || (data.bonusDay is string && data.bonusDay.size() <= 10)) &&
+             data.bedtimeEnabled is bool &&
+             (!('bedtimeStart' in data) || (data.bedtimeStart is string && data.bedtimeStart.size() <= 10)) &&
+             (!('bedtimeEnd' in data) || (data.bedtimeEnd is string && data.bedtimeEnd.size() <= 10)) &&
+             data.blockedPackages is list &&
+             data.blockedPackages.size() <= 60 &&
+             (data.blockedPackages.size() == 0 || data.blockedPackages[0] is string) &&
+             data.studyOnlyMode is bool &&
+             (!('parentNudgeText' in data) || (data.parentNudgeText is string && data.parentNudgeText.size() <= 250)) &&
+             data.parentNudgeNonce is int &&
+             data.parentNudgeNonce >= 0 &&
+             data.parentNudgeNonce <= 1000000000 &&
+             (!('parentPin' in data) || (data.parentPin is string && data.parentPin.size() <= 10)) &&
+             (!('assignedSubject' in data) || (data.assignedSubject is string && data.assignedSubject.size() <= 100)) &&
+             (!('assignedDurationMinutes' in data) || (data.assignedDurationMinutes is int && data.assignedDurationMinutes >= 0 && data.assignedDurationMinutes <= 180)) &&
+             (!('assignedAlarmTime' in data) || (data.assignedAlarmTime is string && data.assignedAlarmTime.size() <= 10)) &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidScreenShare(data, ownerUid) {
+      return data.childUid is string &&
+             data.childUid == ownerUid &&
+             data.isSharing is bool &&
+             data.frameBase64 is string &&
+             data.frameBase64.size() <= 250000 &&
+             data.frameWidth is int &&
+             data.frameWidth >= 0 &&
+             data.frameWidth <= 2160 &&
+             data.frameHeight is int &&
+             data.frameHeight >= 0 &&
+             data.frameHeight <= 3840 &&
+             data.frameSeq is int &&
+             data.frameSeq >= 0 &&
+             data.frameSeq <= 1000000000 &&
+             (!('captureMode' in data) || (data.captureMode is string && data.captureMode.size() <= 40)) &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    match /pairingCodes/{code} {
+      allow get: if isSignedIn() && isValidPairingCodeId(code);
+      allow list: if isSignedIn() && resource.data.childUid == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       isValidPairingCodeId(code) &&
+                       incoming().childUid == request.auth.uid &&
+                       incoming().active == true &&
+                       incoming().keys().hasAll(['code', 'childUid', 'childName', 'active', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['code', 'childUid', 'childName', 'active', 'usedByParentUid', 'createdAt', 'updatedAt']) &&
+                       isValidPairingCode(incoming(), code);
+
+      allow update: if isSignedIn() &&
+                       isValidPairingCodeId(code) &&
+                       incoming().code == existing().code &&
+                       incoming().childUid == existing().childUid &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidPairingCode(incoming(), code) &&
+                       (
+                         (existing().childUid == request.auth.uid &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['active', 'childName', 'updatedAt'])) ||
+                         (existing().childUid != request.auth.uid &&
+                          existing().active == true &&
+                          incoming().active == false &&
+                          incoming().usedByParentUid == request.auth.uid &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['active', 'usedByParentUid', 'updatedAt']))
+                       );
+
+      allow delete: if isSignedIn() && isValidPairingCodeId(code) && existing().childUid == request.auth.uid;
+    }
+
+    match /familyLinks/{linkId} {
+      allow get: if isSignedIn() && isValidId(linkId) && (existing().parentUid == request.auth.uid || existing().childUid == request.auth.uid);
+      allow list: if isSignedIn() && (resource.data.parentUid == request.auth.uid || resource.data.childUid == request.auth.uid);
+
+      allow create: if isSignedIn() &&
+                       isValidId(linkId) &&
+                       incoming().parentUid == request.auth.uid &&
+                       incoming().status == 'active' &&
+                       incoming().keys().hasAll(['parentUid', 'childUid', 'parentName', 'childName', 'pairingCode', 'status', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['parentUid', 'childUid', 'parentName', 'childName', 'pairingCode', 'status', 'createdAt', 'updatedAt']) &&
+                       isValidFamilyLink(incoming(), linkId) &&
+                       exists(/databases/$(database)/documents/pairingCodes/$(incoming().pairingCode)) &&
+                       get(/databases/$(database)/documents/pairingCodes/$(incoming().pairingCode)).data.childUid == incoming().childUid &&
+                       get(/databases/$(database)/documents/pairingCodes/$(incoming().pairingCode)).data.active == true;
+
+      allow update: if isSignedIn() &&
+                       isValidId(linkId) &&
+                       (existing().parentUid == request.auth.uid || existing().childUid == request.auth.uid) &&
+                       incoming().parentUid == existing().parentUid &&
+                       incoming().childUid == existing().childUid &&
+                       incoming().pairingCode == existing().pairingCode &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidFamilyLink(incoming(), linkId) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'parentName', 'childName', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(linkId) && (existing().parentUid == request.auth.uid || existing().childUid == request.auth.uid);
+    }
+
     match /users/{userId} {
-      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId);
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isLinkedParent(userId));
       allow list: if false;
 
       allow create: if isSignedIn() &&
@@ -83,6 +288,9 @@ service cloud.firestore {
                        incoming().keys().hasAll(['userId', 'challengeIdx', 'subjectsText', 'createdAt', 'updatedAt']) &&
                        incoming().keys().hasOnly([
                          'userId',
+                         'role',
+                         'displayName',
+                         'linkedParentUid',
                          'onboardingCompleted',
                          'currentStudy',
                          'syllabusText',
@@ -105,6 +313,9 @@ service cloud.firestore {
                        incoming().createdAt == existing().createdAt &&
                        isValidUserProfile(incoming()) &&
                        incoming().diff(existing()).affectedKeys().hasOnly([
+                         'role',
+                         'displayName',
+                         'linkedParentUid',
                          'onboardingCompleted',
                          'currentStudy',
                          'syllabusText',
@@ -121,14 +332,14 @@ service cloud.firestore {
       allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId);
 
       match /sessions/{sessionId} {
-        allow get: if isSignedIn() && request.auth.uid == userId && isValidId(sessionId);
-        allow list: if isSignedIn() && request.auth.uid == userId;
+        allow get: if isSignedIn() && isValidId(sessionId) && (request.auth.uid == userId || isLinkedParent(userId));
+        allow list: if isSignedIn() && (request.auth.uid == userId || ('authorizedParentUids' in resource.data && request.auth.uid in resource.data.authorizedParentUids));
 
         allow create: if isSignedIn() &&
                          request.auth.uid == userId &&
                          isValidId(sessionId) &&
                          incoming().keys().hasAll(['userId', 'day', 'subject', 'sound', 'durationMinutes', 'done', 'distractionReasons', 'distractionCount', 'createdAt', 'updatedAt']) &&
-                         incoming().keys().hasOnly(['userId', 'day', 'subject', 'sound', 'durationMinutes', 'done', 'rewardText', 'distractionReasons', 'distractionCount', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'authorizedParentUids', 'day', 'subject', 'sound', 'durationMinutes', 'done', 'rewardText', 'distractionReasons', 'distractionCount', 'createdAt', 'updatedAt']) &&
                          isValidStudySession(incoming());
 
         allow update: if isSignedIn() &&
@@ -137,9 +348,114 @@ service cloud.firestore {
                          incoming().userId == existing().userId &&
                          incoming().createdAt == existing().createdAt &&
                          isValidStudySession(incoming()) &&
-                         incoming().diff(existing()).affectedKeys().hasOnly(['done', 'rewardText', 'distractionReasons', 'distractionCount', 'updatedAt']);
+                         incoming().diff(existing()).affectedKeys().hasOnly(['authorizedParentUids', 'done', 'rewardText', 'distractionReasons', 'distractionCount', 'updatedAt']);
 
         allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(sessionId);
+      }
+
+      match /deviceState/{docId} {
+        allow get: if isSignedIn() && docId == 'current' && (request.auth.uid == userId || isLinkedParent(userId));
+        allow list: if false;
+
+        allow create: if isSignedIn() &&
+                         docId == 'current' &&
+                         request.auth.uid == userId &&
+                         incoming().keys().hasAll(['childUid', 'childName', 'deviceModel', 'androidVersion', 'batteryPercent', 'isCharging', 'usageAccessGranted', 'notificationsGranted', 'supervisionServiceRunning', 'totalPhoneScreenMinutesToday', 'installedApps', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly([
+                           'childUid', 'childName', 'deviceModel', 'androidVersion', 'batteryPercent',
+                           'isCharging', 'usageAccessGranted', 'notificationsGranted', 'supervisionServiceRunning',
+                           'currentForegroundApp', 'currentForegroundPackage', 'totalPhoneScreenMinutesToday',
+                           'isFocusSessionActive', 'activeFocusSubject', 'todayStudyMinutes',
+                           'todayCompletedSessions', 'streakDays', 'recentBlockedAttempt',
+                           'installedApps', 'createdAt', 'updatedAt'
+                         ]) &&
+                         isValidDeviceState(incoming(), userId);
+
+        allow update: if isSignedIn() &&
+                         docId == 'current' &&
+                         request.auth.uid == userId &&
+                         incoming().childUid == existing().childUid &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidDeviceState(incoming(), userId) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'childName', 'deviceModel', 'androidVersion', 'batteryPercent',
+                           'isCharging', 'usageAccessGranted', 'notificationsGranted', 'supervisionServiceRunning',
+                           'currentForegroundApp', 'currentForegroundPackage', 'totalPhoneScreenMinutesToday',
+                           'isFocusSessionActive', 'activeFocusSubject', 'todayStudyMinutes',
+                           'todayCompletedSessions', 'streakDays', 'recentBlockedAttempt',
+                           'installedApps', 'updatedAt'
+                         ]);
+
+        allow delete: if isSignedIn() && docId == 'current' && request.auth.uid == userId;
+      }
+
+      match /parentControls/{docId} {
+        allow get: if isSignedIn() && docId == 'current' && (request.auth.uid == userId || isLinkedParent(userId));
+        allow list: if false;
+
+        allow create: if isSignedIn() &&
+                         docId == 'current' &&
+                         (request.auth.uid == userId || isLinkedParent(userId)) &&
+                         incoming().keys().hasAll(['childUid', 'parentUid', 'isPhoneLocked', 'dailyScreenLimitMinutes', 'bonusMinutesToday', 'bedtimeEnabled', 'blockedPackages', 'studyOnlyMode', 'parentNudgeNonce', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly([
+                           'childUid', 'parentUid', 'isPhoneLocked', 'lockMessage',
+                           'dailyScreenLimitMinutes', 'bonusMinutesToday', 'bonusDay',
+                           'bedtimeEnabled', 'bedtimeStart', 'bedtimeEnd',
+                           'blockedPackages', 'studyOnlyMode', 'parentNudgeText',
+                           'parentNudgeNonce', 'parentPin', 'assignedSubject',
+                           'assignedDurationMinutes', 'assignedAlarmTime',
+                           'createdAt', 'updatedAt'
+                         ]) &&
+                         isValidParentControls(incoming(), userId);
+
+        allow update: if isSignedIn() &&
+                         docId == 'current' &&
+                         incoming().childUid == existing().childUid &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidParentControls(incoming(), userId) &&
+                         (
+                           (isLinkedParent(userId) &&
+                            incoming().diff(existing()).affectedKeys().hasOnly([
+                              'parentUid', 'isPhoneLocked', 'lockMessage',
+                              'dailyScreenLimitMinutes', 'bonusMinutesToday', 'bonusDay',
+                              'bedtimeEnabled', 'bedtimeStart', 'bedtimeEnd',
+                              'blockedPackages', 'studyOnlyMode', 'parentNudgeText',
+                              'parentNudgeNonce', 'parentPin', 'assignedSubject',
+                              'assignedDurationMinutes', 'assignedAlarmTime', 'updatedAt'
+                            ])) ||
+                           (request.auth.uid == userId &&
+                            incoming().diff(existing()).affectedKeys().hasOnly(['parentUid', 'bonusMinutesToday', 'bonusDay', 'updatedAt']))
+                         );
+
+        allow delete: if isSignedIn() && docId == 'current' && (request.auth.uid == userId || isLinkedParent(userId));
+      }
+
+      match /screenShare/{docId} {
+        allow get: if isSignedIn() && docId == 'current' && (request.auth.uid == userId || isLinkedParent(userId));
+        allow list: if false;
+
+        allow create: if isSignedIn() &&
+                         docId == 'current' &&
+                         request.auth.uid == userId &&
+                         incoming().keys().hasAll(['childUid', 'isSharing', 'frameBase64', 'frameWidth', 'frameHeight', 'frameSeq', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly([
+                           'childUid', 'isSharing', 'frameBase64', 'frameWidth',
+                           'frameHeight', 'frameSeq', 'captureMode', 'createdAt', 'updatedAt'
+                         ]) &&
+                         isValidScreenShare(incoming(), userId);
+
+        allow update: if isSignedIn() &&
+                         docId == 'current' &&
+                         request.auth.uid == userId &&
+                         incoming().childUid == existing().childUid &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidScreenShare(incoming(), userId) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'isSharing', 'frameBase64', 'frameWidth',
+                           'frameHeight', 'frameSeq', 'captureMode', 'updatedAt'
+                         ]);
+
+        allow delete: if isSignedIn() && docId == 'current' && request.auth.uid == userId;
       }
     }
   }

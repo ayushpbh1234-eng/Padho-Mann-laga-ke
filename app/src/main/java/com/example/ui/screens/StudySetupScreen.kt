@@ -29,7 +29,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.Button
@@ -58,11 +58,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.example.data.model.FocusConstants
 import com.example.data.model.UserProfile
 import com.example.ui.StudySetupUiState
+import com.example.ui.components.clearActiveTextInput
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -77,11 +81,17 @@ fun StudySetupScreen(
     onClearError: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    if (isEditingExisting) {
-        BackHandler { onCancelEdit() }
-    }
-
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val textToolbar = LocalTextToolbar.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    if (isEditingExisting) {
+        BackHandler {
+            clearActiveTextInput(focusManager, textToolbar, keyboardController)
+            onCancelEdit()
+        }
+    }
     var currentStudy by remember(existingProfile.currentStudy) {
         mutableStateOf(existingProfile.currentStudy)
     }
@@ -133,7 +143,10 @@ fun StudySetupScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 IconButton(
-                    onClick = onCancelEdit,
+                    onClick = {
+                        clearActiveTextInput(focusManager, textToolbar, keyboardController)
+                        onCancelEdit()
+                    },
                     modifier = Modifier.minimumInteractiveComponentSize()
                 ) {
                     Icon(
@@ -229,7 +242,7 @@ fun StudySetupScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.MenuBook,
+                        imageVector = Icons.AutoMirrored.Filled.MenuBook,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.secondary
                     )
@@ -334,6 +347,7 @@ fun StudySetupScreen(
 
                 OutlinedButton(
                     onClick = {
+                        clearActiveTextInput(focusManager, textToolbar, keyboardController)
                         photoPickerLauncher.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                         )
@@ -427,6 +441,7 @@ fun StudySetupScreen(
                     if (combinedSubjects.isNotBlank()) {
                         OutlinedButton(
                             onClick = {
+                                clearActiveTextInput(focusManager, textToolbar, keyboardController)
                                 onSubmitManual(currentStudy, combinedSubjects, typedSyllabus)
                             },
                             modifier = Modifier.minimumInteractiveComponentSize()
@@ -440,6 +455,7 @@ fun StudySetupScreen(
 
         Button(
             onClick = {
+                clearActiveTextInput(focusManager, textToolbar, keyboardController)
                 onSubmitWithAi(currentStudy, combinedSubjects, typedSyllabus, syllabusBitmap)
             },
             enabled = !isAnalyzing,

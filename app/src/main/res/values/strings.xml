@@ -10,4 +10,5 @@
     <string name="nav_sound">Sound</string>
     <string name="nav_mirror">Mirror</string>
     <string name="nav_diary">Diary</string>
+    <string name="nav_family">Family</string>
 </resources>
