@@ -1,0 +1,146 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string &&
+             data.userId == request.auth.uid &&
+             data.challengeIdx is int &&
+             data.challengeIdx >= 0 &&
+             data.challengeIdx <= 1000000 &&
+             data.subjectsText is string &&
+             data.subjectsText.size() <= 500 &&
+             (!('onboardingCompleted' in data) || data.onboardingCompleted is bool) &&
+             (!('currentStudy' in data) || (data.currentStudy is string && data.currentStudy.size() <= 200)) &&
+             (!('syllabusText' in data) || (data.syllabusText is string && data.syllabusText.size() <= 4000)) &&
+             (!('studySummary' in data) || (data.studySummary is string && data.studySummary.size() <= 500)) &&
+             (!('syllabusTopics' in data) || (data.syllabusTopics is list && data.syllabusTopics.size() <= 40 && (data.syllabusTopics.size() == 0 || data.syllabusTopics[0] is string))) &&
+             (!('customChallenges' in data) || (data.customChallenges is list && data.customChallenges.size() <= 20 && (data.customChallenges.size() == 0 || data.customChallenges[0] is string))) &&
+             (!('mood' in data) || (data.mood is string && data.mood in ['thaki', 'bored', 'energetic'])) &&
+             (!('alarmTime' in data) || (data.alarmTime is string && data.alarmTime.size() <= 10)) &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidStudySession(data) {
+      return data.userId is string &&
+             data.userId == request.auth.uid &&
+             data.day is string &&
+             data.day.size() == 10 &&
+             data.day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+             data.subject is string &&
+             data.subject.size() >= 1 &&
+             data.subject.size() <= 100 &&
+             data.sound is string &&
+             data.sound.size() >= 1 &&
+             data.sound.size() <= 50 &&
+             data.durationMinutes is int &&
+             data.durationMinutes >= 1 &&
+             data.durationMinutes <= 180 &&
+             data.done is bool &&
+             (!('rewardText' in data) || (data.rewardText is string && data.rewardText.size() <= 300)) &&
+             data.distractionReasons is list &&
+             data.distractionReasons.size() <= 20 &&
+             (data.distractionReasons.size() == 0 || data.distractionReasons[0] is string) &&
+             data.distractionCount is int &&
+             data.distractionCount >= 0 &&
+             data.distractionCount <= 20 &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId);
+      allow list: if false;
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       incoming().keys().hasAll(['userId', 'challengeIdx', 'subjectsText', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly([
+                         'userId',
+                         'onboardingCompleted',
+                         'currentStudy',
+                         'syllabusText',
+                         'studySummary',
+                         'syllabusTopics',
+                         'customChallenges',
+                         'mood',
+                         'challengeIdx',
+                         'alarmTime',
+                         'subjectsText',
+                         'createdAt',
+                         'updatedAt'
+                       ]) &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(userId) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'onboardingCompleted',
+                         'currentStudy',
+                         'syllabusText',
+                         'studySummary',
+                         'syllabusTopics',
+                         'customChallenges',
+                         'mood',
+                         'challengeIdx',
+                         'alarmTime',
+                         'subjectsText',
+                         'updatedAt'
+                       ]);
+
+      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(userId);
+
+      match /sessions/{sessionId} {
+        allow get: if isSignedIn() && request.auth.uid == userId && isValidId(sessionId);
+        allow list: if isSignedIn() && request.auth.uid == userId;
+
+        allow create: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(sessionId) &&
+                         incoming().keys().hasAll(['userId', 'day', 'subject', 'sound', 'durationMinutes', 'done', 'distractionReasons', 'distractionCount', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'day', 'subject', 'sound', 'durationMinutes', 'done', 'rewardText', 'distractionReasons', 'distractionCount', 'createdAt', 'updatedAt']) &&
+                         isValidStudySession(incoming());
+
+        allow update: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(sessionId) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidStudySession(incoming()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['done', 'rewardText', 'distractionReasons', 'distractionCount', 'updatedAt']);
+
+        allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(sessionId);
+      }
+    }
+  }
+}

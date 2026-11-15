@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">Focus Garden</string>
+    <string name="auth_subtitle">Apna study garden ugao, distractions samjho, aur har din thoda aur focus karo.</string>
+    <string name="sign_in_with_google">Sign in with Google</string>
+    <string name="sign_out">Sign out</string>
+    <string name="cd_garden_hero">Sunlit botanical study corner</string>
+    <string name="cd_diary_header">Botanical study journal notebook</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_focus">Focus</string>
+    <string name="nav_sound">Sound</string>
+    <string name="nav_mirror">Mirror</string>
+    <string name="nav_diary">Diary</string>
+</resources>

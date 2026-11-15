@@ -1,0 +1,142 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User-specific Focus Garden study profile, onboarding state, syllabus topics, tailored challenges, mood check-in, and reverse alarm time.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Authenticated Firebase user UID."
+        },
+        "onboardingCompleted": {
+          "type": "boolean",
+          "description": "Whether the user has completed their study & syllabus setup."
+        },
+        "currentStudy": {
+          "type": "string",
+          "description": "User's current course, class, or exam (e.g., B.Tech CSE Sem 4, NEET)."
+        },
+        "syllabusText": {
+          "type": "string",
+          "description": "User-entered syllabus text or extracted summary."
+        },
+        "studySummary": {
+          "type": "string",
+          "description": "Short personalized summary of the user's syllabus plan."
+        },
+        "syllabusTopics": {
+          "type": "array",
+          "description": "Extracted or tailored syllabus chapters/topics."
+        },
+        "customChallenges": {
+          "type": "array",
+          "description": "Personalized Pehli Line micro-challenges based on the user's subjects and syllabus."
+        },
+        "mood": {
+          "type": "string",
+          "description": "Latest check-in mood.",
+          "enum": ["thaki", "bored", "energetic"]
+        },
+        "challengeIdx": {
+          "type": "integer",
+          "description": "Current index in the Pehli Line Challenge rotation."
+        },
+        "alarmTime": {
+          "type": "string",
+          "description": "Reverse study alarm target time in HH:mm 24-hour format."
+        },
+        "subjectsText": {
+          "type": "string",
+          "description": "Comma-separated subjects entered by the user or extracted from their syllabus."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["userId", "challengeIdx", "subjectsText", "createdAt", "updatedAt"]
+    },
+    "StudySession": {
+      "title": "StudySession",
+      "description": "A single focus timer session with subject, ambient sound, completion status, reward, and distraction reasons.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase user UID."
+        },
+        "day": {
+          "type": "string",
+          "description": "Local calendar date string YYYY-MM-DD."
+        },
+        "subject": {
+          "type": "string",
+          "description": "Study subject name."
+        },
+        "sound": {
+          "type": "string",
+          "description": "Selected ambient sound label."
+        },
+        "durationMinutes": {
+          "type": "integer",
+          "description": "Planned session duration in minutes."
+        },
+        "done": {
+          "type": "boolean",
+          "description": "Whether the session completed without giving up or distraction."
+        },
+        "rewardText": {
+          "type": "string",
+          "description": "Random motivational sticker and quote earned on completion."
+        },
+        "distractionReasons": {
+          "type": "array",
+          "description": "List of distraction reason labels logged during the session."
+        },
+        "distractionCount": {
+          "type": "integer",
+          "description": "Number of distractions logged in this session."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "day",
+        "subject",
+        "sound",
+        "durationMinutes",
+        "done",
+        "distractionReasons",
+        "distractionCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Stores each authenticated user's Focus Garden study profile, syllabus details, and settings."
+    },
+    "/users/{userId}/sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/StudySession" },
+      "description": "Stores each authenticated user's study sessions for Focus, Sound Mixer, Distraction Mirror, and Study Diary."
+    }
+  }
+}

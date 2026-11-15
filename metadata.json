@@ -1,0 +1,6 @@
+{
+  "name": "Focus Garden",
+  "description": "A mindful study focus timer and habit garden with mood check-ins, ambient sound distraction tracking, reverse study alarms, and daily study diaries.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
